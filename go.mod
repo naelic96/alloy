@@ -303,6 +303,8 @@ require (
 	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e
 	sigs.k8s.io/controller-runtime v0.20.4
 	sigs.k8s.io/yaml v1.4.0
+	github.com/grafana/alloy/internal/runtime/component/otelcol v0.97.0
+    go.opentelemetry.io/collector/processor/processorthelper v0.129.0
 )
 
 require (
