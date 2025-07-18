@@ -4,13 +4,13 @@ import (
     "context"
     "fmt"
 
-    "github.com/grafana/alloy/internal/runtime/component"
-    "github.com/grafana/alloy/internal/runtime/component/otelcol"
-    "go.opentelemetry.io/collector/component"
+    //"github.com/grafana/alloy/internal/runtime/component"
+    //"github.com/grafana/alloy/internal/runtime/component/otelcol"
+    //"go.opentelemetry.io/collector/component"
     "go.opentelemetry.io/collector/pdata/pcommon"
     "go.opentelemetry.io/collector/pdata/plog"
-    "go.opentelemetry.io/collector/processor/processorhelper"
-    "github.com/grafana/alloy/internal/runtime/component/otelcol/processor"
+    //"go.opentelemetry.io/collector/processor/processorhelper"
+    //"github.com/grafana/alloy/internal/runtime/component/otelcol/processor"
 )
 
 func NewFactory() component.ProcessorFactory {
