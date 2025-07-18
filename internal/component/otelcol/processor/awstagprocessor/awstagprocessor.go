@@ -1,14 +1,28 @@
 package awstagprocessor
 
 import (
+	"context"
+	"fmt"
+	"sync"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-logfmt/logfmt"
+
 	"github.com/grafana/alloy/internal/component"
+	"github.com/grafana/alloy/internal/component/featuregate"
+	"github.com/grafana/alloy/internal/component/livedebugging"
 	"github.com/grafana/alloy/internal/component/otelcol"
-	otelcolCfg "github.com/grafana/alloy/internal/component/otelcol/config"
+	"github.com/grafana/alloy/internal/component/otelcol/config"
 	"github.com/grafana/alloy/internal/component/otelcol/exporter"
-	otelcomponent "go.opentelemetry.io/collector/component"
+	"github.com/grafana/alloy/internal/component/otelcol/fanoutconsumer"
+	"github.com/grafana/alloy/internal/component/otelcol/interceptconsumer"
+	"github.com/grafana/alloy/internal/component/otelcol/lazyconsumer"
+
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configcompression"
-	"go.opentelemetry.io/collector/pipeline"
+	"go.opentelemetry.io/collector/pdata/ptrace"
+	"go.opentelemetry.io/collector/processor/processorhelper"
 )
 func init() {
 component.Register(component.Registration{
