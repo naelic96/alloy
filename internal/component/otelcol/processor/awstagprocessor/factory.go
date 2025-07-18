@@ -1,7 +1,7 @@
 package awstagprocessor
 
 import (
-    _ "github.com/grafana/alloy/internal/runtime/component"
+    "github.com/grafana/alloy/internal/runtime/component"
 )
 
 func init() {
