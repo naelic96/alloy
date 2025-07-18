@@ -1,0 +1,26 @@
+# The CODEOWNERS file is used to define ownership of individuals or teams
+# outside of the core set of Grafana Alloy maintainers.
+#
+# If a directory is not listed here, it is assumed to be owned by the
+# @grafana/grafana-alloy-maintainers; they are not explicitly listed as
+# CODEOWNERS as a GitHub project board is used instead for PR tracking, which
+# helps reduce notification noise of the members of that team.
+
+* @grafana/grafana-alloy-maintainers
+
+#`make docs` procedure and related workflows are owned by @jdbaldry.
+/.github/workflows/deploy-pr-preview.yml                       @jdbaldry
+/.github/workflows/publish-technical-documentation-next.yml    @jdbaldry
+/.github/workflows/publish-technical-documentation-release.yml @jdbaldry
+/.github/workflows/update-make-docs.yml                        @jdbaldry
+/docs/docs.mk                                                  @jdbaldry
+/docs/make-docs                                                @jdbaldry
+/docs/variables.mk                                             @jdbaldry
+
+# Documentation:
+/docs/sources/ @clayton-cornell
+
+# Components:
+/internal/component/pyroscope/              @grafana/grafana-alloy-profiling-maintainers
+/internal/component/beyla/                  @grafana/beyla
+/internal/component/database_observability/ @cristiangreco @matthewnolf @fridgepoet
