@@ -10,6 +10,7 @@ import (
     "go.opentelemetry.io/collector/pdata/pcommon"
     "go.opentelemetry.io/collector/pdata/plog"
     "go.opentelemetry.io/collector/processor/processorhelper"
+    "github.com/grafana/alloy/internal/runtime/component/otelcol/processor"
 )
 
 func NewFactory() component.ProcessorFactory {
