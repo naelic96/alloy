@@ -9,7 +9,7 @@ import (
     "go.opentelemetry.io/collector/component"
     "go.opentelemetry.io/collector/pdata/pcommon"
     "go.opentelemetry.io/collector/pdata/plog"
-    "go.opentelemetry.io/collector/processor/processorthelper"
+    "go.opentelemetry.io/collector/processor/processorhelper"
 )
 
 func NewFactory() component.ProcessorFactory {
