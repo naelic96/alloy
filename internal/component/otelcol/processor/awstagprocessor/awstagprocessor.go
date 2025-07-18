@@ -10,15 +10,11 @@ import (
 	"github.com/go-logfmt/logfmt"
 
 	"github.com/grafana/alloy/internal/component"
-	"github.com/grafana/alloy/internal/component/featuregate"
-	"github.com/grafana/alloy/internal/component/livedebugging"
+	"go.opentelemetry.io/collector/featuregate"
 	"github.com/grafana/alloy/internal/component/otelcol"
 	"github.com/grafana/alloy/internal/component/otelcol/config"
 	"github.com/grafana/alloy/internal/component/otelcol/exporter"
-	"github.com/grafana/alloy/internal/component/otelcol/fanoutconsumer"
-	"github.com/grafana/alloy/internal/component/otelcol/interceptconsumer"
-	"github.com/grafana/alloy/internal/component/otelcol/lazyconsumer"
-
+	"go.opentelemetry.io/collector/internal/fanoutconsumer"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configcompression"
 	"go.opentelemetry.io/collector/pdata/ptrace"
