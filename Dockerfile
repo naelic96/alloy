@@ -28,11 +28,11 @@ WORKDIR /src/alloy
 
 COPY --from=ui-build /ui/build /src/alloy/internal/web/ui/build
 
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/go/pkg/mod \
-    go mod tidy && \
-    go mod download
-    
+#RUN --mount=type=cache,target=/root/.cache/go-build \
+#    --mount=type=cache,target=/go/pkg/mod \
+#    go mod tidy && \
+#    go mod download
+
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     GOOS="$TARGETOS" GOARCH="$TARGETARCH" GOARM=${TARGETVARIANT#v} \
