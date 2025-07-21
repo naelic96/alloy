@@ -3,22 +3,23 @@ package awstagprocessor
 import (
 	"time"
 
-	"go.opentelemetry.io/collector/config"
+	"github.com/grafana/alloy/internal/component"
+	"github.com/grafana/alloy/internal/component/otelcol"
 )
 
-// Config defines configuration for the AWS tag processor.
+// Config definisce la configurazione del processor
 type Config struct {
-	config.ProcessorSettings `mapstructure:",squash"`
+	otelcol.ProcessorSettings `alloy:"squash"`
 
-	// TTL defines how long to cache AWS tags for a resource before refreshing them.
-	TTL time.Duration `mapstructure:"ttl"`
+	// TTL indica per quanto tempo una entry cache rimane valida
+	TTL time.Duration `alloy:"ttl,optional"`
 
-	// TagPrefix allows you to prefix added tag keys to avoid collisions.
-	TagPrefix string `mapstructure:"tag_prefix"`
+	// UseRegionalSTS consente di usare endpoint STS regionali (utile in ambienti isolati)
+	UseRegionalSTS bool `alloy:"use_regional_sts,optional"`
 
-	// Region (optional) to override AWS region auto-detection.
-	Region string `mapstructure:"region"`
+	// AllowedTags elenca i tag AWS da convertire in label (es. ["Environment", "App"])
+	AllowedTags []string `alloy:"allowed_tags,optional"`
 
-	// AssumeRoleARN (optional) if you need to assume a specific role to fetch tags.
-	AssumeRoleARN string `mapstructure:"assume_role_arn"`
+	// DisableTagFetching disattiva le chiamate API per fetch dei tag (solo per debug o test)
+	DisableTagFetching bool `alloy:"disable_tag_fetching,optional"`
 }

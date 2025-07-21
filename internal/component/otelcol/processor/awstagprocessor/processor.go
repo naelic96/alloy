@@ -5,177 +5,98 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/resourcegroupstaggingapi"
-	"go.opentelemetry.io/collector/processor"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
-	"go.opentelemetry.io/collector/processor/processorthelper"
+
+	"go.opentelemetry.io/collector/component"
+)
+
+type signalType int
+
+const (
+	tracesSignal signalType = iota
+	logsSignal
+	metricsSignal
 )
 
 type awsTagProcessor struct {
-	tagClient *resourcegroupstaggingapi.ResourceGroupsTaggingAPI
-	ttl       time.Duration
-	tagPrefix string
-
-	mu    sync.Mutex
-	cache map[string]cachedTags
+	logger    component.Logger
+	cfg       *Config
+	client    *awsTagClient
+	signal    signalType
+	initOnce  sync.Once
+	initError error
 }
 
-type cachedTags struct {
-	tags      map[string]string
-	expiresAt time.Time
-}
-
-// newAWSTagProcessor creates the processor from Config
-func newAWSTagProcessor(cfg *Config) (*awsTagProcessor, error) {
-	awsCfg := aws.NewConfig()
-	if cfg.Region != "" {
-		awsCfg.Region = aws.String(cfg.Region)
-	}
-	if cfg.AssumeRoleARN != "" {
-		// Role assumption logic can be added here
-		// For simplicity, assuming credentials are available via env
-		awsCfg.Credentials = credentials.NewEnvCredentials()
-	}
-
-	sess, err := session.NewSession(awsCfg)
+func newAWSTagProcessor(logger component.Logger, cfg *Config, signal signalType) (*awsTagProcessor, error) {
+	client, err := newAWSTagClient(logger, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create AWS session: %w", err)
+		return nil, err
 	}
-
-	client := resourcegroupstaggingapi.New(sess)
 
 	return &awsTagProcessor{
-		tagClient: client,
-		ttl:       cfg.TTL,
-		tagPrefix: cfg.TagPrefix,
-		cache:     make(map[string]cachedTags),
+		logger: logger,
+		cfg:    cfg,
+		client: client,
+		signal: signal,
 	}, nil
 }
 
-// processTraces adds tags as resource attributes for traces
+// ----------- TRACE -----------
 func (p *awsTagProcessor) processTraces(ctx context.Context, td ptrace.Traces) (ptrace.Traces, error) {
 	rs := td.ResourceSpans()
 	for i := 0; i < rs.Len(); i++ {
 		res := rs.At(i).Resource()
-		p.enrichResource(ctx, res.Attributes())
+		p.enrichResource(ctx, res)
 	}
 	return td, nil
 }
 
-// processLogs adds tags as resource attributes for logs
+// ----------- LOG -----------
 func (p *awsTagProcessor) processLogs(ctx context.Context, ld plog.Logs) (plog.Logs, error) {
 	rs := ld.ResourceLogs()
 	for i := 0; i < rs.Len(); i++ {
 		res := rs.At(i).Resource()
-		p.enrichResource(ctx, res.Attributes())
+		p.enrichResource(ctx, res)
 	}
 	return ld, nil
 }
 
-// processMetrics adds tags as resource attributes for metrics
+// ----------- METRIC -----------
 func (p *awsTagProcessor) processMetrics(ctx context.Context, md pmetric.Metrics) (pmetric.Metrics, error) {
 	rs := md.ResourceMetrics()
 	for i := 0; i < rs.Len(); i++ {
 		res := rs.At(i).Resource()
-		p.enrichResource(ctx, res.Attributes())
+		p.enrichResource(ctx, res)
 	}
 	return md, nil
 }
 
-// enrichResource adds tags to the resource
-func (p *awsTagProcessor) enrichResource(ctx context.Context, attrs pcommon.Map) {
-	arnAttr, ok := attrs.Get("aws.arn")
-	if !ok {
-		arnAttr, ok = attrs.Get("cloud.resource_id")
-		if !ok {
-			return
-		}
+// ----------- COMMON -----------
+func (p *awsTagProcessor) enrichResource(ctx context.Context, res pcommon.Resource) {
+	arnAttr, exists := res.Attributes().Get("aws.arn")
+	if !exists {
+		return
 	}
 
-	arn := arnAttr.Str()
-	tags := p.getTagsForARN(ctx, arn)
+	arnStr := arnAttr.Str()
+	tags, err := p.client.GetTags(ctx, arnStr)
+	if err != nil {
+		p.logger.Warn(fmt.Sprintf("Failed to fetch tags for ARN %s: %v", arnStr, err))
+		return
+	}
+
 	for k, v := range tags {
-		attrs.PutStr(p.tagPrefix+k, v)
+		labelKey := sanitizeKey(fmt.Sprintf("aws.tag.%s", k))
+		res.Attributes().PutStr(labelKey, v)
 	}
 }
 
-// getTagsForARN returns tags from cache or AWS
-func (p *awsTagProcessor) getTagsForARN(ctx context.Context, arn string) map[string]string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if cached, ok := p.cache[arn]; ok && time.Now().Before(cached.expiresAt) {
-		return cached.tags
-	}
-
-	tags := p.fetchTagsFromAWS(ctx, arn)
-	p.cache[arn] = cachedTags{
-		tags:      tags,
-		expiresAt: time.Now().Add(p.ttl),
-	}
-	return tags
-}
-
-// fetchTagsFromAWS queries AWS Resource Groups Tagging API for tags
-func (p *awsTagProcessor) fetchTagsFromAWS(ctx context.Context, arn string) map[string]string {
-	input := &resourcegroupstaggingapi.GetResourcesInput{
-		ResourceARNList: []*string{aws.String(arn)},
-	}
-	output, err := p.tagClient.GetResourcesWithContext(ctx, input)
-	if err != nil {
-		return map[string]string{}
-	}
-
-	tags := map[string]string{}
-	for _, resource := range output.ResourceTagMappingList {
-		for _, tag := range resource.Tags {
-			if tag.Key != nil && tag.Value != nil {
-				tags[*tag.Key] = *tag.Value
-			}
-		}
-	}
-	return tags
-}
-
-// createProcessorFactory creates the processor factory for Alloy/OTel
-func createProcessorFactory() component.ProcessorFactory {
-	return processorthelper.NewFactory(
-		"awstagprocessor",
-		createDefaultConfig,
-		processorthelper.WithTraces(newTraceProcessor),
-		processorthelper.WithLogs(newLogProcessor),
-		processorthelper.WithMetrics(newMetricProcessor),
-	)
-}
-
-func newTraceProcessor(ctx context.Context, set component.ProcessorCreateSettings, cfg component.Config, next component.Traces) (component.Traces, error) {
-	p, err := newAWSTagProcessor(cfg.(*Config))
-	if err != nil {
-		return nil, err
-	}
-	return processorthelper.NewTracesProcessor(ctx, set, cfg, next, p.processTraces)
-}
-
-func newLogProcessor(ctx context.Context, set component.ProcessorCreateSettings, cfg component.Config, next component.Logs) (component.Logs, error) {
-	p, err := newAWSTagProcessor(cfg.(*Config))
-	if err != nil {
-		return nil, err
-	}
-	return processorthelper.NewLogsProcessor(ctx, set, cfg, next, p.processLogs)
-}
-
-func newMetricProcessor(ctx context.Context, set component.ProcessorCreateSettings, cfg component.Config, next component.Metrics) (component.Metrics, error) {
-	p, err := newAWSTagProcessor(cfg.(*Config))
-	if err != nil {
-		return nil, err
-	}
-	return processorthelper.NewMetricsProcessor(ctx, set, cfg, next, p.processMetrics)
+func sanitizeKey(key string) string {
+	// Sostituisce i caratteri non validi per le label di Prometheus/Loki/Tempo
+	replacer := strings.NewReplacer(" ", "_", ".", "_", "/", "_", "-", "_")
+	return replacer.Replace(strings.ToLower(key))
 }
