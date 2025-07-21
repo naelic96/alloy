@@ -3,104 +3,50 @@ package awstagprocessor
 import (
 	"context"
 	"fmt"
-	"time"
+
+	"github.com/grafana/alloy/internal/component"
+	"github.com/grafana/alloy/internal/component/otelcol"
+	"github.com/grafana/alloy/internal/featuregate"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/processor"
-	//"go.opentelemetry.io/collector/component"
+	colprocessor "go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/consumer/consumertypes"
-	"go.opentelemetry.io/collector/processor/processormetadata"
-	"go.opentelemetry.io/collector/processor/processorfactory"
-	"go.opentelemetry.io/collector/processor/processorhelper"
+	"go.opentelemetry.io/collector/consumer/consumerhelper"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
-const (
-	// TypeStr is the unique identifier for this processor.
-	TypeStr = "awstagprocessor"
-)
-
-// NewFactory returns a new processor factory for the awstagprocessor.
-func NewFactory() processor.Factory {
-	return processor.NewFactory(
-		TypeStr,
-		createDefaultConfig,
-		processor.WithTraces(createTracesProcessor, component.StabilityAlpha),
-		processor.WithLogs(createLogsProcessor, component.StabilityAlpha),
-		processor.WithMetrics(createMetricsProcessor, component.StabilityAlpha),
-	)
+// Register the component with Alloy.
+func init() {
+	component.Register(component.Registration{
+		Name:      "otelcol.processor.awstag",
+		Stability: featuregate.StabilityExperimental,
+		Args:      Arguments{},
+		Exports:   otelcol.ConsumerExports{},
+		Build: func(o component.Options, a component.Arguments) (component.Component, error) {
+			return NewProcessor(o, a.(Arguments))
+		},
+	})
 }
 
-// createDefaultConfig returns a default configuration for this processor.
-func createDefaultConfig() config.Processor {
-	return &Config{
-		ProcessorSettings: config.NewProcessorSettings(config.NewComponentID(TypeStr)),
-		TTL:               6 * time.Hour,
+// NewProcessor builds the processor component.
+func NewProcessor(o component.Options, args Arguments) (*Processor, error) {
+	processor := &Processor{
+		logger:  o.Logger,
+		ttl:     args.TTL,
+		args:    args,
+		enricher: NewAWSTagEnricher(args.TTL, o.Logger),
 	}
-}
 
-// createTracesProcessor sets up the processor for traces.
-func createTracesProcessor(
-	ctx context.Context,
-	set processor.CreateSettings,
-	cfg config.Processor,
-	next consumer.Traces,
-) (processor.Traces, error) {
-	oCfg := cfg.(*Config)
-	p, err := newAWSTagProcessor(set.Logger, oCfg, tracesSignal)
-	if err != nil {
-		return nil, err
+	export := otelcol.ConsumerExports{}
+	export.Input = otelcol.Consumer{
+		Traces:  processor,
+		Logs:    processor,
+		Metrics: processor,
 	}
-	return processorhelper.NewTracesProcessor(
-		ctx,
-		set,
-		cfg,
-		next,
-		p.processTraces,
-		processorhelper.WithCapabilities(consumer.Capabilities{MutatesData: true}),
-	)
-}
+	o.OnStateChange(export)
 
-// createLogsProcessor sets up the processor for logs.
-func createLogsProcessor(
-	ctx context.Context,
-	set processor.CreateSettings,
-	cfg config.Processor,
-	next consumer.Logs,
-) (processor.Logs, error) {
-	oCfg := cfg.(*Config)
-	p, err := newAWSTagProcessor(set.Logger, oCfg, logsSignal)
-	if err != nil {
-		return nil, err
-	}
-	return processorhelper.NewLogsProcessor(
-		ctx,
-		set,
-		cfg,
-		next,
-		p.processLogs,
-		processorhelper.WithCapabilities(consumer.Capabilities{MutatesData: true}),
-	)
-}
-
-// createMetricsProcessor sets up the processor for metrics.
-func createMetricsProcessor(
-	ctx context.Context,
-	set processor.CreateSettings,
-	cfg config.Processor,
-	next consumer.Metrics,
-) (processor.Metrics, error) {
-	oCfg := cfg.(*Config)
-	p, err := newAWSTagProcessor(set.Logger, oCfg, metricsSignal)
-	if err != nil {
-		return nil, err
-	}
-	return processorhelper.NewMetricsProcessor(
-		ctx,
-		set,
-		cfg,
-		next,
-		p.processMetrics,
-		processorhelper.WithCapabilities(consumer.Capabilities{MutatesData: true}),
-	)
+	return processor, nil
 }

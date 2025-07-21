@@ -1,47 +1,64 @@
 package awstagprocessor
 
 import (
+	"errors"
 	"time"
 
 	"github.com/grafana/alloy/internal/component"
 	"github.com/grafana/alloy/internal/component/otelcol"
-	"github.com/grafana/alloy/internal/featuregate"
 	"github.com/grafana/alloy/syntax"
 )
 
-func init() {
-	component.Register(component.Registration{
-		Name:      "otelcol.processor.awstagprocessor",
-		Stability: featuregate.StabilityExperimental,
-		Args:      Arguments{},
-		Exports:   otelcol.ConsumerExports{},
-		Build: func(opts component.Options, args component.Arguments) (component.Component, error) {
-			return New(opts, args.(Arguments))
-		},
-	})
-}
+var (
+	_ syntax.Validator = (*Arguments)(nil)
+	_ component.ArgumentsConverter = (*Arguments)(nil)
+)
 
 // Arguments configures the awstagprocessor component.
 type Arguments struct {
-	// TTL defines the cache duration for AWS tags (e.g., "6h").
+	// Output defines where to send processed telemetry.
+	Output *otelcol.ConsumerArguments `alloy:"output,block"`
+
+	// Refresh interval for AWS tag cache.
 	TTL time.Duration `alloy:"ttl,attr,optional"`
 
-	// Output is the next consumer that receives enriched telemetry data.
-	Output *otelcol.ConsumerArguments `alloy:"output,block"`
+	// Enable tag enrichment for traces.
+	EnableTraces bool `alloy:"enable_traces,attr,optional"`
+
+	// Enable tag enrichment for logs.
+	EnableLogs bool `alloy:"enable_logs,attr,optional"`
+
+	// Enable tag enrichment for metrics.
+	EnableMetrics bool `alloy:"enable_metrics,attr,optional"`
 }
 
-// SetToDefault implements syntax.Defaulter.
-func (args *Arguments) SetToDefault() {
-	args.TTL = 6 * time.Hour
-}
-
-// Validate implements syntax.Validator.
-func (args *Arguments) Validate() error {
-	if args.Output == nil {
-		return syntax.Error("output block is required")
+// DefaultArguments returns the default processor settings.
+func DefaultArguments() Arguments {
+	return Arguments{
+		TTL:           6 * time.Hour,
+		EnableTraces:  true,
+		EnableLogs:    true,
+		EnableMetrics: true,
 	}
-	if args.TTL <= 0 {
-		return syntax.Error("ttl must be greater than 0")
+}
+
+// SetToDefault sets arguments to default values.
+func (args *Arguments) SetToDefault() {
+	*args = DefaultArguments()
+}
+
+// Validate ensures the arguments are correctly configured.
+func (args Arguments) Validate() error {
+	if args.Output == nil {
+		return errors.New("output is required")
+	}
+	if !args.EnableTraces && !args.EnableLogs && !args.EnableMetrics {
+		return errors.New("at least one of enable_traces, enable_logs, or enable_metrics must be true")
 	}
 	return nil
+}
+
+// Convert transforms Arguments into a component.Options-compatible struct.
+func (args Arguments) Convert() (any, error) {
+	return args, nil
 }
